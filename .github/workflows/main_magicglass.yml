@@ -58,9 +58,20 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5626732180BB449D9FDACB6B49B711B5 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B61000D65E6F4F7BB476597A6375BE49 }}
  
+      - name: Stop Azure Web App before deploy
+        run: |
+          az webapp stop --name MagicGlass --resource-group assist-vision
+ 
+      - name: Wait for app to stop
+        run: sleep 15
+ 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'MagicGlass'
           slot-name: 'Production'
           package: release.zip
+ 
+      - name: Start Azure Web App after deploy
+        run: |
+          az webapp start --name MagicGlass --resource-group assist-vision
