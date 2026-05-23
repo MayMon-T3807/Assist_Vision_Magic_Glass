@@ -18,25 +18,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
  
-      - name: Set up Python version
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
  
-      - name: Create virtual environment and install dependencies
+      - name: Install dependencies
         run: |
-          python -m venv antenv
-          source antenv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt --target=".python_packages/lib/site-packages"
  
-      - name: Upload artifact for deployment jobs
+      - name: Zip artifact for deployment
+        run: zip -r release.zip . --exclude "*.git*"
+ 
+      - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: |
-            .
-            !antenv/
+          path: release.zip
           retention-days: 1
  
   deploy:
@@ -64,6 +63,4 @@ jobs:
         with:
           app-name: 'MagicGlass'
           slot-name: 'Production'
-          package: .
-          clean: true
- 
+          package: release.zip
