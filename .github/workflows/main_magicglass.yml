@@ -12,9 +12,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
- 
     steps:
       - uses: actions/checkout@v4
  
@@ -29,22 +26,13 @@ jobs:
           pip install -r requirements.txt
  
       - name: Create deployment package
-        run: |
-          zip -r release.zip * .[^.]* \
-            --exclude "*.git*" \
-            --exclude "__pycache__/*" \
-            --exclude "*.pyc" \
-            --exclude "release.zip"
-          
-          echo "Package contents:"
-          unzip -l release.zip | head -20
+        run: zip -r release.zip . -x "*.git*" -x "__pycache__/*" -x "*.pyc" -x "release.zip"
  
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: release.zip
-          retention-days: 1
  
   deploy:
     runs-on: ubuntu-latest
@@ -58,7 +46,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: python-app
-          path: .
  
       - name: Login to Azure
         uses: azure/login@v2
@@ -67,79 +54,9 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5626732180BB449D9FDACB6B49B711B5 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B61000D65E6F4F7BB476597A6375BE49 }}
  
-      - name: Configure App Settings (without delete)
-        run: |
-          # Fix Kudu by resetting configuration
-          az webapp config appsettings set \
-            --name MagicGlass \
-            --resource-group assist-vision \
-            --settings \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
-              WEBSITE_RUN_FROM_PACKAGE=0 \
-              ENABLE_ORYX_BUILD=true \
-              WEBSITE_WEBDEPLOY_USE_SCM=false
-          
-          # Reset the Linux runtime
-          az webapp config set \
-            --name MagicGlass \
-            --resource-group assist-vision \
-            --linux-fx-version "PYTHON:3.11"
- 
-      - name: Force restart to clear bad state
-        run: |
-          # Force stop
-          az webapp stop --name MagicGlass --resource-group assist-vision
-          sleep 30
-          
-          # Start to reset container
-          az webapp start --name MagicGlass --resource-group assist-vision
-          sleep 45
-          
-          # Stop again for deployment
-          az webapp stop --name MagicGlass --resource-group assist-vision
-          sleep 30
- 
-      - name: Deploy using Kudu API directly
-        run: |
-          # Get publishing profile credentials
-          PUBLISH_PROFILE=$(az webapp deployment list-publishing-profiles \
-            --name MagicGlass \
-            --resource-group assist-vision \
-            --xml)
-          
-          # Extract username and password (alternative approach)
-          USERNAME=$(echo "$PUBLISH_PROFILE" | grep -oP '(?<=publishProfile userName=")[^"]*')
-          PASSWORD=$(echo "$PUBLISH_PROFILE" | grep -oP '(?<=publishProfile userPWD=")[^"]*')
-          
-          # Use Kudu API directly
-          KUDU_URL="https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net"
-          
-          # Deploy using Kudu ZipDeploy API
-          curl -X POST \
-            -u "$USERNAME:$PASSWORD" \
-            --data-binary @release.zip \
-            -H "Content-Type: application/octet-stream" \
-            "$KUDU_URL/api/zipdeploy?isAsync=false"
- 
-      - name: Start app
-        run: |
-          az webapp start --name MagicGlass --resource-group assist-vision
-          sleep 30
- 
-      - name: Verify deployment
-        run: |
-          APP_URL="https://magicglass-gegme7abcff0d5az.japaneast-01.azurewebsites.net"
-          echo "Verifying deployment at $APP_URL"
-          
-          for i in {1..15}; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $APP_URL --max-time 30 || echo "000")
-            echo "Attempt $i/15 - HTTP Status: $HTTP_CODE"
-            
-            if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
-              echo "✅ Application deployed successfully!"
-              exit 0
-            fi
-            sleep 10
-          done
-          
-          echo "⚠️ Check logs at: https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net/api/logdump"
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'MagicGlass'
+          slot-name: 'Production'
+          package: release.zip
