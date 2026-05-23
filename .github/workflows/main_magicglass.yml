@@ -12,6 +12,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+ 
     steps:
       - uses: actions/checkout@v4
  
@@ -26,13 +29,16 @@ jobs:
           pip install -r requirements.txt
  
       - name: Create deployment package
-        run: zip -r release.zip . -x "*.git*" -x "__pycache__/*" -x "*.pyc" -x "release.zip"
+        run: |
+          zip -r release.zip . -x "*.git*" -x "__pycache__/*" -x "*.pyc" -x "release.zip"
+          echo "Package created successfully"
  
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: release.zip
+          retention-days: 1
  
   deploy:
     runs-on: ubuntu-latest
