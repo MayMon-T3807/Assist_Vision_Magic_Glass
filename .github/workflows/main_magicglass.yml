@@ -18,16 +18,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
  
-      - name: Zip only app files (no packages, no git)
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+ 
+      - name: Install dependencies
         run: |
-          zip -r release.zip . \
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+ 
+      - name: Create proper deployment package
+        run: |
+          # Ensure we're in the root directory
+          pwd
+          ls -la
+          
+          # Create zip with proper structure (no nested folders)
+          zip -r release.zip * .[^.]* \
             --exclude "*.git*" \
             --exclude ".python_packages/*" \
             --exclude "antenv/*" \
             --exclude "__pycache__/*" \
             --exclude "*.pyc" \
             --exclude "output.tar*" \
-            --exclude "*.ipynb"
+            --exclude "*.ipynb" \
+            --exclude "release.zip"
+          
+          # Verify zip contents
+          echo "Contents of release.zip (first 30 lines):"
+          unzip -l release.zip | head -30
+          
+          # Verify critical files exist at root level
+          echo "Checking for critical files in zip root..."
+          unzip -l release.zip | grep -E "requirements.txt|app.py|main.py|application.py|wsgi.py"
+          
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Critical files missing from zip root!"
+            echo "Make sure requirements.txt and a main application file (app.py, main.py, etc.) exist"
+            exit 1
+          fi
  
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
@@ -48,6 +78,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: python-app
+          path: .  # Download to current directory
+ 
+      - name: Verify downloaded package
+        run: |
+          echo "Verifying downloaded release.zip exists:"
+          ls -lh release.zip
+          
+          echo "Contents of downloaded release.zip:"
+          unzip -l release.zip | head -20
  
       - name: Login to Azure
         uses: azure/login@v2
@@ -56,20 +95,92 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5626732180BB449D9FDACB6B49B711B5 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B61000D65E6F4F7BB476597A6375BE49 }}
  
-      - name: Stop Azure Web App before deploy
-        run: az webapp stop --name MagicGlass --resource-group assist-vision
- 
-      - name: Wait for app to stop
-        run: sleep 15
- 
-      - name: Deploy zip to Azure Web App
+      - name: Verify Azure credentials and resource
         run: |
+          # Test Azure CLI access
+          az account show
+          
+          # Verify web app exists
+          az webapp show --name MagicGlass --resource-group assist-vision --query "defaultHostName"
+          
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Cannot access web app. Check resource group and app name."
+            exit 1
+          fi
+ 
+      - name: Configure App Settings for deployment
+        run: |
+          # Enable build automation
+          az webapp config appsettings set \
+            --name MagicGlass \
+            --resource-group assist-vision \
+            --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+              WEBSITE_RUN_FROM_PACKAGE=0 \
+              ENABLE_ORYX_BUILD=true \
+              PYTHON_ENABLE_GUNICORN=true
+          
+          # Set Linux runtime
+          az webapp config set \
+            --name MagicGlass \
+            --resource-group assist-vision \
+            --linux-fx-version "PYTHON:3.11"
+ 
+      - name: Stop app before deployment
+        run: |
+          echo "Stopping web app..."
+          az webapp stop --name MagicGlass --resource-group assist-vision
+          sleep 30
+          
+          # Verify app is stopped
+          STATE=$(az webapp show --name MagicGlass --resource-group assist-vision --query "state" -o tsv)
+          echo "App state: $STATE"
+ 
+      - name: Deploy to Azure Web App
+        run: |
+          echo "Starting deployment..."
           az webapp deploy \
             --name MagicGlass \
             --resource-group assist-vision \
             --src-path release.zip \
             --type zip \
             --async false
+          
+          if [ $? -eq 0 ]; then
+            echo "Deployment completed successfully"
+          else
+            echo "Deployment failed with exit code $?"
+            exit 1
+          fi
  
-      - name: Start Azure Web App after deploy
-        run: az webapp start --name MagicGlass --resource-group assist-vision
+      - name: Start the app
+        run: |
+          echo "Starting web app..."
+          az webapp start --name MagicGlass --resource-group assist-vision
+          sleep 30
+ 
+      - name: Verify deployment
+        run: |
+          APP_URL="https://magicglass-gegme7abcff0d5az.japaneast-01.azurewebsites.net"
+          echo "Checking application at $APP_URL"
+          
+          # Try multiple times to allow app to initialize
+          for i in {1..15}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $APP_URL --max-time 30 || echo "000")
+            echo "Attempt $i/15 - HTTP Status: $HTTP_CODE"
+            
+            if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
+              echo "✅ Application deployed and responding successfully!"
+              exit 0
+            fi
+            
+            if [[ "$HTTP_CODE" == "500" ]] || [[ "$HTTP_CODE" == "503" ]]; then
+              echo "⚠️ App is starting up (HTTP $HTTP_CODE)... waiting"
+            fi
+            
+            sleep 10
+          done
+          
+          echo "⚠️ Application may still be initializing"
+          echo "Check the deployment logs at: https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net/api/deployments/latest"
+          echo "View application logs at: https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net/api/logdump"
