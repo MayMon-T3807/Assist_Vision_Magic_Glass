@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AssistVision Magic Glass — Daily Object Recognition</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+:root{
+  --bg:#f2ede4;
+  --white:#ffffff;
+  --navy:#1c2e45;
+  --navy2:#253d60;
+  --teal:#2d8b7a;
+  --teal2:#3aab96;
+  --teal-light:#e2f4f1;
+  --border:#d8d0c5;
+  --muted:#647484;
+  --warm:#f9f5ef;
+  --font:'Nunito',sans-serif;
+  --font2:'Nunito Sans',sans-serif;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--navy);font-size:17px;line-height:1.7}
+
+nav{
+  background:var(--white);border-bottom:1.5px solid var(--border);
+  padding:0 56px;height:64px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:200;
+}
+.logo{font-size:21px;font-weight:900;color:var(--navy);letter-spacing:-0.5px}
+.logo em{color:var(--teal);font-style:normal}
+.logo small{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-left:6px;vertical-align:middle}
+.nav-links{display:flex;gap:32px}
+.nav-links a{font-size:15px;font-weight:600;color:var(--muted);text-decoration:none;transition:color .2s}
+.nav-links a:hover{color:var(--teal)}
+.nav-pill{background:var(--teal);color:#fff;font-size:14px;font-weight:700;padding:9px 22px;border-radius:50px;text-decoration:none;transition:background .2s}
+.nav-pill:hover{background:var(--navy)}
+
+/* HERO */
+.hero{background:var(--white);padding:72px 56px 100px;text-align:center;position:relative;overflow:hidden}
+.hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:72px;background:var(--bg);clip-path:ellipse(56% 100% at 50% 100%)}
+.hero-pill{display:inline-flex;align-items:center;gap:8px;background:var(--teal-light);color:var(--teal);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;padding:8px 20px;border-radius:50px;margin-bottom:28px}
+.hero-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--teal);animation:dot 1.8s infinite}
+@keyframes dot{0%,100%{opacity:1}50%{opacity:.2}}
+.hero h1{font-size:clamp(36px,5vw,62px);font-weight:900;line-height:1.08;letter-spacing:-2px;color:var(--navy);margin-bottom:18px}
+.hero h1 em{color:var(--teal);font-style:normal}
+.hero-sub{font-family:var(--font2);font-size:19px;font-weight:300;color:var(--muted);max-width:520px;margin:0 auto 56px;line-height:1.7}
+
+/* GLASSES */
+.glasses-wrap{position:relative;width:660px;max-width:100%;margin:0 auto 16px}
+.g-svg{width:100%;display:block;filter:drop-shadow(0 20px 48px rgba(28,46,69,.16)) drop-shadow(0 4px 8px rgba(28,46,69,.08))}
+.g-lens{position:absolute;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.g-lens-l{top:14%;left:7.2%;width:36.5%;height:65%;border-radius:48% 48% 48% 48%/44% 44% 48% 48%}
+.g-lens-r{top:14%;left:56.3%;width:36.5%;height:65%;border-radius:48% 48% 48% 48%/44% 44% 48% 48%}
+.g-lens-bg{position:absolute;inset:0;background:rgba(226,244,241,.94);transition:background .4s}
+.g-lens-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(45,139,122,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(45,139,122,.1) 1px,transparent 1px);background-size:20px 20px}
+.g-scan{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent 0%,var(--teal) 30%,var(--teal2) 70%,transparent 100%);animation:gScan 2s linear infinite;display:none;box-shadow:0 0 6px rgba(45,139,122,.6)}
+.g-scan.on{display:block}
+@keyframes gScan{0%{top:0;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:100%;opacity:0}}
+.g-br{position:absolute;width:56px;height:52px;top:50%;left:50%;transform:translate(-50%,-72%);display:none;pointer-events:none}
+.g-br.on{display:block}
+.g-br::before,.g-br::after,.g-br2::before,.g-br2::after{content:'';position:absolute;width:12px;height:12px;border-color:var(--teal);border-style:solid}
+.g-br::before{top:0;left:0;border-width:2px 0 0 2px}
+.g-br::after{top:0;right:0;border-width:2px 2px 0 0}
+.g-br2{position:absolute;width:56px;height:52px;top:50%;left:50%;transform:translate(-50%,-72%);pointer-events:none;display:none}
+.g-br2.on{display:block}
+.g-br2::before{bottom:0;left:0;border-width:0 0 2px 2px}
+.g-br2::after{bottom:0;right:0;border-width:0 2px 2px 0}
+.g-img{position:absolute;inset:0;object-fit:cover;width:100%;height:100%;opacity:0;transition:opacity .6s;border-radius:inherit}
+.g-img.on{opacity:1}
+.g-tint{position:absolute;inset:0;background:rgba(8,24,16,.42);opacity:0;transition:opacity .5s;border-radius:inherit}
+.g-tint.on{opacity:1}
+.g-tag{position:relative;z-index:6;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:0;transform:scale(.82);transition:opacity .5s,transform .5s;padding:0 10px}
+.g-tag.on{opacity:1;transform:scale(1)}
+.g-tag-name{background:var(--teal);color:#fff;font-size:13px;font-weight:900;padding:5px 16px;border-radius:50px;white-space:nowrap;letter-spacing:.3px;box-shadow:0 2px 12px rgba(45,139,122,.35)}
+.g-idle{position:relative;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;transition:opacity .3s}
+.g-idle.off{opacity:0;pointer-events:none}
+.g-idle-icon{font-size:32px;opacity:.28}
+.g-idle-txt{font-size:10px;font-weight:700;color:var(--teal);opacity:.55;text-align:center}
+.g-lens-r .g-lens-bg{background:rgba(218,238,234,.7)}
+.g-lens-r .g-lens-grid{opacity:.35}
+.g-r-inner{position:relative;z-index:4;opacity:.5;text-align:center}
+.g-r-icon{font-size:22px}
+.g-r-txt{font-size:9px;font-weight:700;color:var(--teal);margin-top:4px}
+.g-bridge{position:absolute;top:2.5%;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;font-size:10px;font-weight:800;letter-spacing:.5px;padding:4px 14px;border-radius:50px;white-space:nowrap;z-index:20;transition:background .3s}
+.g-bridge.scan{background:var(--teal)}
+.g-bridge.done{background:#1d6e42}
+.g-bridge-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#7ee0bb;margin-right:6px;vertical-align:middle;animation:dot 1.5s infinite}
+.scroll-hint{font-family:var(--font2);font-size:14px;color:var(--muted);position:relative;z-index:1;margin-top:10px}
+
+/* UPLOAD */
+.upload-wrap{max-width:600px;margin:56px auto 0;padding:0 20px}
+.upload-card{background:var(--white);border:1.5px solid var(--border);border-radius:22px;overflow:hidden;box-shadow:0 4px 24px rgba(28,46,69,.06)}
+.u-head{background:var(--navy);padding:18px 28px;font-size:16px;font-weight:700;color:#fff;display:flex;align-items:center;gap:10px}
+.u-zone{margin:22px;border:2.5px dashed var(--border);border-radius:16px;padding:38px 20px;text-align:center;cursor:pointer;background:var(--warm);position:relative;min-height:150px;transition:all .2s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px}
+.u-zone:hover,.u-zone.over{border-color:var(--teal);background:var(--teal-light)}
+.u-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.u-icon{font-size:40px}
+.u-title{font-size:18px;font-weight:700;color:var(--navy)}
+.u-sub{font-size:14px;color:var(--muted)}
+.u-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:calc(100% - 44px);margin:0 22px 22px;background:var(--teal);color:#fff;border:none;padding:16px;border-radius:12px;font-family:var(--font);font-size:17px;font-weight:800;cursor:pointer;transition:all .2s}
+.u-btn:hover:not(:disabled){background:var(--navy)}
+.u-btn:disabled{opacity:.38;cursor:not-allowed}
+.spin{width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite;display:none}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* RESULTS */
+.res-wrap{max-width:600px;margin:22px auto 0;padding:0 20px;display:none}
+.res-card{background:var(--white);border:1.5px solid var(--border);border-radius:22px;overflow:hidden;box-shadow:0 4px 24px rgba(28,46,69,.06)}
+.res-head{background:#1d6e42;padding:18px 28px;font-size:16px;font-weight:700;color:#fff}
+.res-top{padding:26px 28px;display:flex;gap:18px;align-items:center;border-bottom:1.5px solid var(--warm)}
+.res-icon{width:72px;height:72px;border-radius:16px;background:var(--teal-light);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:36px;flex-shrink:0}
+.res-name{font-size:26px;font-weight:900;color:var(--navy);letter-spacing:-.5px;margin-bottom:3px;text-transform:capitalize}
+.res-sub{font-size:13px;color:var(--muted)}
+.alts-body{padding:18px 28px}
+.alts-hd{font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.alt-row{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid #f0ebe3}
+.alt-row:last-child{border:none}
+.alt-name{flex:1;font-size:15px;font-weight:600;text-transform:capitalize}
+.speak-btn{margin:0 28px 14px;width:calc(100% - 56px);background:var(--warm);border:1.5px solid var(--border);color:var(--navy);padding:13px;border-radius:12px;font-family:var(--font);font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.speak-btn:hover{background:var(--teal-light);border-color:var(--teal);color:var(--teal)}
+.again-btn{display:block;margin:0 28px 24px;width:calc(100% - 56px);background:transparent;border:1.5px solid var(--border);color:var(--muted);padding:11px;border-radius:12px;font-family:var(--font);font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;text-align:center}
+.again-btn:hover{border-color:var(--navy);color:var(--navy)}
+
+/* SECTIONS */
+section{padding:88px 56px}
+.s-inner{max-width:1060px;margin:0 auto}
+.s-tag{font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:var(--teal);margin-bottom:10px}
+.s-h{font-size:clamp(28px,3.5vw,44px);font-weight:900;color:var(--navy);letter-spacing:-1px;line-height:1.1;margin-bottom:14px}
+.s-p{font-family:var(--font2);font-size:17px;color:var(--muted);max-width:520px;line-height:1.7}
+
+/* HOW IT WORKS */
+.how-sec{background:var(--white)}
+.steps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:52px;background:var(--border);border-radius:20px;overflow:hidden}
+.step-card{background:var(--white);padding:32px 24px;transition:background .2s}
+.step-card:hover{background:var(--teal-light)}
+.step-n{font-size:40px;font-weight:900;display:block;-webkit-text-stroke:2px var(--teal2);color:transparent;line-height:1;margin-bottom:14px}
+.step-ico{font-size:30px;margin-bottom:12px;display:block}
+.step-title{font-size:17px;font-weight:800;color:var(--navy);margin-bottom:7px}
+.step-txt{font-family:var(--font2);font-size:14px;color:var(--muted);line-height:1.65}
+
+/* ABOUT */
+.about-sec{background:var(--bg)}
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:52px}
+.about-card{background:var(--white);border:1.5px solid var(--border);border-radius:18px;padding:28px}
+.about-card-tag{font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:10px}
+.about-card-title{font-size:20px;font-weight:900;color:var(--navy);margin-bottom:16px}
+.about-row{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.about-row:last-child{margin-bottom:0}
+.about-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0;margin-top:8px}
+.about-row-label{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px}
+.about-row-value{font-size:16px;font-weight:700;color:var(--navy)}
+.about-full{grid-column:1 / -1}
+.about-desc{font-family:var(--font2);font-size:16px;color:var(--muted);line-height:1.75}
+
+/* FOOTER */
+footer{background:var(--navy);color:rgba(255,255,255,.55);padding:36px 56px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+.f-logo{font-size:19px;font-weight:900;color:#fff}
+.f-logo em{color:#4aab9a;font-style:normal}
+.f-logo small{font-size:12px;font-weight:700;color:rgba(255,255,255,.4);letter-spacing:1px;text-transform:uppercase;margin-left:6px;vertical-align:middle}
+footer p{font-size:13px}
+
+@media(max-width:760px){
+  nav{padding:0 20px}
+  .nav-links{display:none}
+  .hero{padding:52px 20px 80px}
+  .glasses-wrap{width:100%}
+  section{padding:64px 20px}
+  .steps-grid{grid-template-columns:1fr 1fr}
+  .about-grid{grid-template-columns:1fr}
+  .about-full{grid-column:auto}
+  footer{padding:28px 20px;flex-direction:column;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">Assist<em>Vision</em><small>Magic Glass</small></div>
+  <div class="nav-links">
+    <a href="#scan">Scan</a>
+    <a href="#how">How it works</a>
+    <a href="#about">About</a>
+  </div>
+  <a href="#scan" class="nav-pill">Try Now</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="scan">
+  <div class="hero-pill">✨ Magic Glass  AI Object Recognition</div>
+  <h1>Upload a photo.<br><em>See the result</em><br>in the glasses.</h1>
+  <p class="hero-sub">
+    AssistVision Magic Glass identifies everyday household objects using deep learning.
+    Your image appears inside the lens  the object name shows up instantly.
+  </p>
+
+  <!-- GLASSES -->
+  <div class="glasses-wrap">
+    <svg class="g-svg" viewBox="0 0 720 310" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="frameGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#2d3f58"/>
+          <stop offset="40%"  stop-color="#1c2e45"/>
+          <stop offset="100%" stop-color="#0f1e30"/>
+        </linearGradient>
+        <linearGradient id="armGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stop-color="#253d60"/>
+          <stop offset="100%" stop-color="#0f1e30"/>
+        </linearGradient>
+        <radialGradient id="glassL" cx="35%" cy="30%" r="65%">
+          <stop offset="0%"   stop-color="#c8ede7" stop-opacity="0.7"/>
+          <stop offset="100%" stop-color="#a0d8d0" stop-opacity="0.3"/>
+        </radialGradient>
+        <radialGradient id="glassR" cx="65%" cy="30%" r="65%">
+          <stop offset="0%"   stop-color="#c8ede7" stop-opacity="0.5"/>
+          <stop offset="100%" stop-color="#a0d8d0" stop-opacity="0.2"/>
+        </radialGradient>
+        <filter id="rimShadow">
+          <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f1e30" flood-opacity="0.25"/>
+        </filter>
+        <linearGradient id="shine" x1="0.2" y1="0" x2="0.8" y2="1">
+          <stop offset="0%"   stop-color="#fff" stop-opacity="0.18"/>
+          <stop offset="50%"  stop-color="#fff" stop-opacity="0.04"/>
+          <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Arms -->
+      <path d="M12 200 L12 106 Q12 76 36 72 L112 68" stroke="url(#armGrad)" stroke-width="14" stroke-linecap="round" fill="none"/>
+      <circle cx="112" cy="68" r="7" fill="#253d60" stroke="#1c2e45" stroke-width="2"/>
+      <path d="M708 200 L708 106 Q708 76 684 72 L608 68" stroke="url(#armGrad)" stroke-width="14" stroke-linecap="round" fill="none"/>
+      <circle cx="608" cy="68" r="7" fill="#253d60" stroke="#1c2e45" stroke-width="2"/>
+
+      <!-- Left lens -->
+      <ellipse cx="200" cy="175" rx="158" ry="106" fill="url(#frameGrad)" filter="url(#rimShadow)"/>
+      <ellipse cx="200" cy="175" rx="148" ry="97"  fill="url(#glassL)"/>
+      <ellipse cx="200" cy="175" rx="148" ry="97"  fill="url(#shine)"/>
+      <ellipse cx="200" cy="175" rx="148" ry="97"  fill="none" stroke="#3aab96" stroke-width="1.5" opacity="0.35"/>
+
+      <!-- Right lens -->
+      <ellipse cx="520" cy="175" rx="158" ry="106" fill="url(#frameGrad)" filter="url(#rimShadow)"/>
+      <ellipse cx="520" cy="175" rx="148" ry="97"  fill="url(#glassR)"/>
+      <ellipse cx="520" cy="175" rx="148" ry="97"  fill="url(#shine)"/>
+      <ellipse cx="520" cy="175" rx="148" ry="97"  fill="none" stroke="#3aab96" stroke-width="1.5" opacity="0.15"/>
+
+      <!-- Brow bars -->
+      <path d="M44 130 Q100 76 200 72 Q292 68 304 120"  stroke="url(#frameGrad)" stroke-width="10" stroke-linecap="round" fill="none"/>
+      <path d="M676 130 Q620 76 520 72 Q428 68 416 120" stroke="url(#frameGrad)" stroke-width="10" stroke-linecap="round" fill="none"/>
+
+      <!-- Bridge -->
+      <path d="M304 124 Q360 94 416 124" stroke="url(#frameGrad)" stroke-width="10" stroke-linecap="round" fill="none"/>
+      <path d="M340 142 Q360 128 380 142" stroke="#253d60" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.7"/>
+
+      <!-- Screws -->
+      <circle cx="58"  cy="122" r="3.5" fill="#1c2e45" stroke="#3aab96" stroke-width="1" opacity="0.6"/>
+      <circle cx="662" cy="122" r="3.5" fill="#1c2e45" stroke="#3aab96" stroke-width="1" opacity="0.6"/>
+
+      <!-- Highlights -->
+      <path d="M56 152 Q200 62 344 152"  stroke="#fff" stroke-width="1.5" fill="none" opacity="0.12"/>
+      <path d="M376 152 Q520 62 664 152" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.07"/>
+    </svg>
+
+    <!-- LEFT lens overlay -->
+    <div class="g-lens g-lens-l">
+      <div class="g-lens-bg"></div>
+      <div class="g-lens-grid"></div>
+      <div class="g-scan" id="gScan"></div>
+      <div class="g-br"  id="gBr"></div>
+      <div class="g-br2" id="gBr2"></div>
+      <img class="g-img" id="gImg" src="" alt="scanned object">
+      <div class="g-tint" id="gTint"></div>
+      <div class="g-idle" id="gIdle">
+        <div class="g-idle-icon">📷</div>
+        <div class="g-idle-txt">Upload photo<br>to scan</div>
+      </div>
+      <div class="g-tag" id="gTag">
+        <div class="g-tag-name" id="gTagName">Object</div>
+      </div>
+    </div>
+
+    <!-- RIGHT lens overlay -->
+    <div class="g-lens g-lens-r">
+      <div class="g-lens-bg"></div>
+      <div class="g-lens-grid"></div>
+      <div class="g-scan" id="gScanR" style="animation-delay:1.05s;opacity:.5"></div>
+      <div class="g-r-inner">
+        <div class="g-r-icon" id="gRIcon">🔍</div>
+        <div class="g-r-txt"  id="gRTxt">Ready</div>
+      </div>
+    </div>
+
+    <!-- Bridge chip -->
+    <div class="g-bridge" id="gBridge">
+      <span class="g-bridge-dot"></span><span id="gBridgeTxt">Ready to scan</span>
+    </div>
+  </div>
+
+  <p class="scroll-hint">↓ Upload your image below</p>
+</section>
+
+<!-- UPLOAD -->
+<div class="upload-wrap">
+  <div class="upload-card">
+    <div class="u-head">📁 Upload an image to classify</div>
+    <div class="u-zone" id="uZone">
+      <input type="file" id="fileIn" accept="image/*" onchange="handleFile(event)">
+      <div class="u-icon">🖼️</div>
+      <div class="u-title">Drop your image here</div>
+      <div class="u-sub">or click to browse — JPG, PNG, WEBP</div>
+    </div>
+    <button class="u-btn" id="uBtn" disabled onclick="doClassify()">
+      <span id="uBtnTxt">Select an image first</span>
+      <div class="spin" id="spin"></div>
+    </button>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="res-wrap" id="resWrap">
+  <div class="res-card">
+    <div class="res-head">✅ Classification result</div>
+    <div class="res-top">
+      <div class="res-icon" id="rIcon">📦</div>
+      <div style="flex:1">
+        <div class="res-name" id="rName">—</div>
+        <div class="res-sub">Top prediction</div>
+      </div>
+    </div>
+    <div class="alts-body">
+      <div class="alts-hd">Other possibilities</div>
+      <div id="altList"></div>
+    </div>
+    <button class="speak-btn" onclick="speak()">🔊 Read result aloud</button>
+    <button class="again-btn" onclick="resetAll()">↩ Try another image</button>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="how-sec" id="how">
+  <div class="s-inner">
+    <div class="s-tag">Process</div>
+    <h2 class="s-h">How it works</h2>
+    <p class="s-p">From upload to result in seconds — four simple steps.</p>
+    <div class="steps-grid">
+      <div class="step-card">
+        <span class="step-n">01</span>
+        <span class="step-ico">📷</span>
+        <div class="step-title">Upload</div>
+        <p class="step-txt">Choose any photo of a household object from your device. Drag and drop works too.</p>
+      </div>
+      <div class="step-card">
+        <span class="step-n">02</span>
+        <span class="step-ico">✨</span>
+        <div class="step-title">Magic Scan</div>
+        <p class="step-txt">Your image appears inside the Magic Glass lens with a scanning animation.</p>
+      </div>
+      <div class="step-card">
+        <span class="step-n">03</span>
+        <span class="step-ico">🧠</span>
+        <div class="step-title">Classify</div>
+        <p class="step-txt">The model predicts the object class and returns the top result.</p>
+      </div>
+      <div class="step-card">
+        <span class="step-n">04</span>
+        <span class="step-ico">🔊</span>
+        <div class="step-title">Result</div>
+        <p class="step-txt">The label appears in the Magic Glass lens. Tap "Read aloud" for audio output.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section class="about-sec" id="about">
+  <div class="s-inner">
+    <div class="s-tag">About</div>
+    <h2 class="s-h">About this project</h2>
+    <p class="s-p">Final project submission for the Advanced Machine Learning course.</p>
+    <div class="about-grid">
+
+      <div class="about-card">
+        <div class="about-card-tag">Project details</div>
+        <div class="about-card-title">AssistVision Magic Glass</div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Course</div>
+            <div class="about-row-value">Advanced Machine Learning Class</div>
+          </div>
+        </div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Project type</div>
+            <div class="about-row-value">Multi-class Image Classification</div>
+          </div>
+        </div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Architecture</div>
+            <div class="about-row-value">Deep Leaning Learning</div>
+          </div>
+        </div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Dataset</div>
+            <div class="about-row-value">Everyday Object Catalog (Kaggle)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="about-card">
+        <div class="about-card-tag">Student</div>
+        <div class="about-card-title">Project submission</div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Student name</div>
+            <div class="about-row-value">May Mon Thant</div>
+          </div>
+        </div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Student ID</div>
+            <div class="about-row-value">PIUS20230024</div>
+          </div>
+        </div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Instructor</div>
+            <div class="about-row-value">Dr. Nwe Nwe Htay Win</div>
+          </div>
+        </div>
+        <div class="about-row">
+          <div class="about-dot"></div>
+          <div>
+            <div class="about-row-label">Submission date</div>
+            <div class="about-row-value">May 24 2025</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="about-card about-full">
+        <div class="about-card-tag">Project description</div>
+        <div class="about-card-title">What is AssistVision Magic Glass?</div>
+        <p class="about-desc">
+          AssistVision Magic Glass is an assistive vision web application built as part of the
+          Deep Learning final project. 
+          <br><br>
+          The application is designed with accessibility in mind, particularly for
+          individuals experiencing age-related vision or cognitive decline. When a user
+          uploads a photo, the image is displayed inside a simulated Magic Glass lens
+          and the predicted object name is shown as an overlay — mirroring how the same
+          system could be deployed on real AR smart glasses hardware in the future.
+          <br><br>
+          The web app is built with Flask (Python) for the backend and plain HTML/CSS/JS
+          for the frontend. The trained model is saved in Keras format and loaded at
+          server startup for fast inference.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="f-logo">Assist<em>Vision</em><small>Magic Glass</small></div>
+  <p>Deep Learning Final Project &mdash; Advanced ML</p>
+  <p>MobileNetV2 &middot; Transfer Learning</p>
+</footer>
+
+<script>
+let file = null, lastTop = null;
+
+const EMOJI = {
+  bathroom:'🚰', clothing:'👕', electronics:'🔌',
+  food_storage:'🥡', fruits_vegetables:'🍎', furniture:'🪑',
+  medical:'💊', sports:'⚽', stationery:'✏️', tools:'🔧',
+  stationary:'✏️'
+};
+
+function handleFile(e) {
+  const f = e.target.files[0]; if (!f) return;
+  file = f;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    el('gImg').src = ev.target.result;
+    el('gImg').classList.add('on');
+    el('gIdle').classList.add('off');
+    setBridge('scan', 'Image loaded');
+    el('gRIcon').textContent = '📸';
+    el('gRTxt').textContent  = 'Ready';
+  };
+  reader.readAsDataURL(f);
+  el('uBtn').disabled = false;
+  el('uBtnTxt').textContent = '✨ Scan with Magic Glass';
+}
+
+function doClassify() {
+  if (!file) return;
+  setLoading(true);
+  setBridge('scan', 'Scanning...');
+  ['gScan','gScanR'].forEach(id => el(id).classList.add('on'));
+  ['gBr','gBr2'].forEach(id => el(id).classList.add('on'));
+  el('gTint').classList.add('on');
+  el('gTag').classList.remove('on');
+  el('resWrap').style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  fetch('/predict', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => { if (d.success) showResult(d); else { alert(d.error || 'Error'); resetLoading(); } })
+    .catch(() => { alert('Cannot reach server. Is Flask running?'); resetLoading(); });
+}
+
+function showResult(d) {
+  setLoading(false);
+  ['gScan','gScanR'].forEach(id => el(id).classList.remove('on'));
+
+  const top = d.results[0];
+  lastTop = top;
+
+  el('gTagName').textContent = top.label;
+  el('gTag').classList.add('on');
+  setBridge('done', 'Detected!');
+  el('gRIcon').textContent = '✅';
+  el('gRTxt').textContent  = top.label;
+
+  el('rName').textContent = top.label;
+  el('rIcon').textContent = EMOJI[top.class] || '📦';
+
+  const al = el('altList');
+  al.innerHTML = '';
+  d.results.slice(1).forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'alt-row';
+    div.innerHTML = `<span class="alt-name">${r.label}</span>`;
+    al.appendChild(div);
+  });
+
+  el('resWrap').style.display = 'block';
+  el('resWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function el(id) { return document.getElementById(id); }
+
+function setLoading(on) {
+  el('uBtn').disabled       = on;
+  el('spin').style.display  = on ? 'block' : 'none';
+  el('uBtnTxt').textContent = on ? 'Scanning...' : '✨ Scan with Magic Glass';
+}
+
+function resetLoading() {
+  setLoading(false);
+  setBridge('', 'Ready to scan');
+  ['gScan','gScanR'].forEach(id => el(id).classList.remove('on'));
+}
+
+function setBridge(state, txt) {
+  el('gBridge').className      = 'g-bridge' + (state ? ' ' + state : '');
+  el('gBridgeTxt').textContent = txt;
+}
+
+function speak() {
+  if (!lastTop || !('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance('This is a ' + lastTop.label + '.');
+  u.rate = 0.85;
+  speechSynthesis.speak(u);
+}
+
+function resetAll() {
+  file = null; lastTop = null;
+  el('fileIn').value = '';
+  ['gImg','gTint'].forEach(id => el(id).classList.remove('on'));
+  el('gImg').src = '';
+  el('gIdle').classList.remove('off');
+  el('gTag').classList.remove('on');
+  ['gBr','gBr2','gScan','gScanR'].forEach(id => el(id).classList.remove('on'));
+  el('uBtn').disabled       = true;
+  el('uBtnTxt').textContent = 'Select an image first';
+  el('resWrap').style.display = 'none';
+  el('gRIcon').textContent = '🔍';
+  el('gRTxt').textContent  = 'Ready';
+  setBridge('', 'Ready to scan');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* drag & drop */
+const uz = el('uZone');
+uz.addEventListener('dragover',  e => { e.preventDefault(); uz.classList.add('over'); });
+uz.addEventListener('dragleave', () => uz.classList.remove('over'));
+uz.addEventListener('drop', e => {
+  e.preventDefault(); uz.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    const dt = new DataTransfer(); dt.items.add(f);
+    el('fileIn').files = dt.files;
+    handleFile({ target: { files: [f] } });
+  }
+});
+</script>
+</body>
+</html>
