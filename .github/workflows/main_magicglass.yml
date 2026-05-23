@@ -63,7 +63,7 @@ jobs:
           az webapp stop --name MagicGlass --resource-group assist-vision
  
       - name: Wait for app to stop
-        run: sleep 15
+        run: sleep 45  # Increased from 15 to 45 seconds to ensure app is fully stopped
  
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
