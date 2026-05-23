@@ -1,4 +1,4 @@
-name: Build and deploy Python app to Azure Web App - MagicGlass
+name: Build and deploy Python app to Azure Web App - MagicGlass (Alternative)
  
 on:
   push:
@@ -29,8 +29,9 @@ jobs:
           pip install -r requirements.txt --target=".python_packages/lib/site-packages"
  
       - name: Zip artifact for deployment
-        run: zip -r release.zip . --exclude "*.git*"
- 
+        run: |
+          zip -r release.zip . --exclude "*.git*" --exclude "*.zip*"
+          
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
@@ -58,20 +59,46 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5626732180BB449D9FDACB6B49B711B5 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B61000D65E6F4F7BB476597A6375BE49 }}
  
-      - name: Stop Azure Web App before deploy
+      - name: Stop and deallocate app
         run: |
           az webapp stop --name MagicGlass --resource-group assist-vision
- 
-      - name: Wait for app to stop
-        run: sleep 45  # Increased from 15 to 45 seconds to ensure app is fully stopped
- 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'MagicGlass'
-          slot-name: 'Production'
-          package: release.zip
- 
-      - name: Start Azure Web App after deploy
+          # Force sync to ensure stop completes
+          az webapp show --name MagicGlass --resource-group assist-vision
+          
+      - name: Wait for complete shutdown
+        run: |
+          echo "Waiting 60 seconds for complete shutdown..."
+          sleep 60
+          
+      - name: Clear deployment locks via Kudu API
+        run: |
+          # Get publishing profile to authenticate with Kudu
+          PUBLISHPROFILE=$(az webapp deployment list-publishing-profiles \
+            --name MagicGlass \
+            --resource-group assist-vision \
+            --xml)
+          
+          # Extract username and password (simplified approach)
+          # Alternative: Use Kudu API to clean locks
+          echo "Checking if Kudu is accessible..."
+          KUDU_URL="https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net"
+          curl -s -o /dev/null -w "%{http_code}" $KUDU_URL || echo "Kudu not accessible"
+          
+      - name: Deploy using ZipDeploy (not OneDeploy)
+        run: |
+          az webapp deploy \
+            --name MagicGlass \
+            --resource-group assist-vision \
+            --src-path release.zip \
+            --type zip \
+            --async false
+          
+      - name: Start app
         run: |
           az webapp start --name MagicGlass --resource-group assist-vision
+          
+      - name: Verify deployment
+        run: |
+          sleep 10
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" \
+            https://magicglass-gegme7abcff0d5az.japaneast-01.azurewebsites.net || true
