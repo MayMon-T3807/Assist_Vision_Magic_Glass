@@ -28,28 +28,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
  
-      - name: Create proper deployment package
+      - name: Create deployment package
         run: |
-          # Create zip with proper structure (no nested folders)
           zip -r release.zip * .[^.]* \
             --exclude "*.git*" \
             --exclude "__pycache__/*" \
             --exclude "*.pyc" \
             --exclude "release.zip"
           
-          # Verify zip contents
-          echo "Contents of release.zip:"
-          unzip -l release.zip | head -30
-          
-          # Verify critical files exist
-          if ! unzip -l release.zip | grep -q "requirements.txt"; then
-            echo "ERROR: requirements.txt not found in zip root!"
-            exit 1
-          fi
-          
-          echo "✅ Deployment package created successfully"
+          echo "Package contents:"
+          unzip -l release.zip | head -20
  
-      - name: Upload artifact for deployment
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
@@ -64,7 +54,7 @@ jobs:
       contents: read
  
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: python-app
@@ -77,114 +67,79 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5626732180BB449D9FDACB6B49B711B5 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B61000D65E6F4F7BB476597A6375BE49 }}
  
-      - name: Get App Service Plan name
-        id: get-plan
+      - name: Configure App Settings (without delete)
         run: |
-          APP_PLAN=$(az webapp show \
-            --name MagicGlass \
-            --resource-group assist-vision \
-            --query "appServicePlanId" \
-            -o tsv | cut -d'/' -f9)
-          echo "plan_name=$APP_PLAN" >> $GITHUB_OUTPUT
-          echo "App Service Plan: $APP_PLAN"
- 
-      - name: Delete and recreate web app (fix bad state)
-        run: |
-          echo "⚠️ Deleting web app to fix bad state..."
-          az webapp delete \
-            --name MagicGlass \
-            --resource-group assist-vision \
-            --keep-empty-plan
-          
-          echo "Waiting for deletion to complete..."
-          sleep 30
-          
-          echo "Recreating web app..."
-          az webapp create \
-            --name MagicGlass \
-            --resource-group assist-vision \
-            --plan ${{ steps.get-plan.outputs.plan_name }} \
-            --runtime "PYTHON:3.11"
-          
-          echo "Waiting for recreation to complete..."
-          sleep 30
-          
-          echo "✅ Web app recreated successfully"
- 
-      - name: Configure App Settings
-        run: |
-          # Set critical settings
+          # Fix Kudu by resetting configuration
           az webapp config appsettings set \
             --name MagicGlass \
             --resource-group assist-vision \
             --settings \
               SCM_DO_BUILD_DURING_DEPLOYMENT=true \
               WEBSITE_RUN_FROM_PACKAGE=0 \
-              ENABLE_ORYX_BUILD=true
+              ENABLE_ORYX_BUILD=true \
+              WEBSITE_WEBDEPLOY_USE_SCM=false
           
-          # Set Linux runtime
+          # Reset the Linux runtime
           az webapp config set \
             --name MagicGlass \
             --resource-group assist-vision \
             --linux-fx-version "PYTHON:3.11"
-          
-          echo "✅ App settings configured"
  
-      - name: Verify Kudu is accessible
+      - name: Force restart to clear bad state
         run: |
-          echo "Waiting for Kudu to initialize..."
-          KUDU_URL="https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net"
+          # Force stop
+          az webapp stop --name MagicGlass --resource-group assist-vision
+          sleep 30
           
-          for i in {1..20}; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $KUDU_URL --max-time 10 || echo "000")
-            echo "Attempt $i/20 - Kudu HTTP: $HTTP_CODE"
-            
-            if [[ "$HTTP_CODE" == "401" ]] || [[ "$HTTP_CODE" == "200" ]]; then
-              echo "✅ Kudu is accessible"
-              break
-            fi
-            sleep 15
-          done
+          # Start to reset container
+          az webapp start --name MagicGlass --resource-group assist-vision
+          sleep 45
+          
+          # Stop again for deployment
+          az webapp stop --name MagicGlass --resource-group assist-vision
+          sleep 30
  
-      - name: Deploy to Azure Web App
+      - name: Deploy using Kudu API directly
         run: |
-          echo "Starting deployment..."
-          az webapp deploy \
+          # Get publishing profile credentials
+          PUBLISH_PROFILE=$(az webapp deployment list-publishing-profiles \
             --name MagicGlass \
             --resource-group assist-vision \
-            --src-path release.zip \
-            --type zip \
-            --async false \
-            --verbose
+            --xml)
           
-          if [ $? -eq 0 ]; then
-            echo "✅ Deployment completed successfully"
-          else
-            echo "❌ Deployment failed"
-            exit 1
-          fi
+          # Extract username and password (alternative approach)
+          USERNAME=$(echo "$PUBLISH_PROFILE" | grep -oP '(?<=publishProfile userName=")[^"]*')
+          PASSWORD=$(echo "$PUBLISH_PROFILE" | grep -oP '(?<=publishProfile userPWD=")[^"]*')
+          
+          # Use Kudu API directly
+          KUDU_URL="https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net"
+          
+          # Deploy using Kudu ZipDeploy API
+          curl -X POST \
+            -u "$USERNAME:$PASSWORD" \
+            --data-binary @release.zip \
+            -H "Content-Type: application/octet-stream" \
+            "$KUDU_URL/api/zipdeploy?isAsync=false"
  
-      - name: Start the app
+      - name: Start app
         run: |
-          echo "Starting web app..."
           az webapp start --name MagicGlass --resource-group assist-vision
           sleep 30
  
       - name: Verify deployment
         run: |
           APP_URL="https://magicglass-gegme7abcff0d5az.japaneast-01.azurewebsites.net"
-          echo "Checking application at $APP_URL"
+          echo "Verifying deployment at $APP_URL"
           
           for i in {1..15}; do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $APP_URL --max-time 30 || echo "000")
             echo "Attempt $i/15 - HTTP Status: $HTTP_CODE"
             
             if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
-              echo "🎉 Application deployed and responding successfully!"
+              echo "✅ Application deployed successfully!"
               exit 0
             fi
             sleep 10
           done
           
-          echo "⚠️ Application may still be starting up"
-          echo "Check logs: https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net/api/logdump"
+          echo "⚠️ Check logs at: https://magicglass-gegme7abcff0d5az.scm.japaneast-01.azurewebsites.net/api/logdump"
