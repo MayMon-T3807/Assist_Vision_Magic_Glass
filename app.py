@@ -18,7 +18,7 @@ def get_model():
     global MODEL, CLASS_NAMES
     if MODEL is None:
         from tensorflow.keras.models import load_model
-        MODEL = load_model(os.path.join(BASE_DIR, 'assistvision_model.keras'))
+        MODEL = load_model(os.path.join(BASE_DIR, 'assistvision_model.h5'))
     if CLASS_NAMES is None:
         with open(os.path.join(BASE_DIR, 'class_names.json'), 'r') as f:
             CLASS_NAMES = json.load(f)
