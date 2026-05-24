@@ -1,0 +1,5 @@
+venv/
+.venv/
+antenv/
+__pycache__/
+*.pyc
