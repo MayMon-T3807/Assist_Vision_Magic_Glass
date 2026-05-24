@@ -1,83 +1,118 @@
 name: Build and deploy Python app to Azure Web App - MagicGlass
-
+ 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-
+ 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
+ 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
+ 
     steps:
       - uses: actions/checkout@v4
-
+ 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
+ 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+ 
       - name: Create deployment package
         run: |
-          # Create a deployment package without including unnecessary files
-          zip -r release.zip . -x "*.git*" -x "__pycache__/*" -x "*.pyc" -x "release.zip" -x "*.tar.zst" -x "output.tar*"
+          zip -r release.zip . \
+            -x "*.git*" \
+            -x "__pycache__/*" \
+            -x "*.pyc" \
+            -x "release.zip" \
+            -x "*.tar.zst" \
+            -x "output.tar*" \
+            -x "*.keras" \
+            -x "*.h5" \
+            -x "*.ipynb" \
+            -x "Processed_Dataset/*" \
+            -x "Dataset/*" \
+            -x "antenv/*"
           echo "Package created successfully"
           ls -lh release.zip
-
+ 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: release.zip
           retention-days: 1
-
+ 
   deploy:
     runs-on: ubuntu-latest
     needs: build
     permissions:
       id-token: write
       contents: read
-
+ 
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: python-app
-
+ 
+      - name: Verify release.zip
+        run: ls -lh release.zip
+ 
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_8BE82E4C63B94566B744FAA35ED89A4B }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5626732180BB449D9FDACB6B49B711B5 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B61000D65E6F4F7BB476597A6375BE49 }}
-
+ 
+      - name: Stop app before deploy
+        run: az webapp stop --name MagicGlass-Prod --resource-group assist-vision
+ 
+      - name: Wait for stop
+        run: sleep 20
+ 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'MagicGlass-Prod'
           slot-name: 'Production'
           package: release.zip
-
-      - name: Configure App Settings after deployment
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            # Set WEBSITE_RUN_FROM_PACKAGE to 0
-            az webapp config appsettings set --name MagicGlass-Prod --resource-group $(az webapp list --query "[?name=='MagicGlass-Prod'].resourceGroup" -o tsv) --settings WEBSITE_RUN_FROM_PACKAGE=0
-            
-            # Set startup command
-            az webapp config set --name MagicGlass-Prod --resource-group $(az webapp list --query "[?name=='MagicGlass-Prod'].resourceGroup" -o tsv) --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 app:app"
-            
-            # Restart the app
-            az webapp restart --name MagicGlass-Prod --resource-group $(az webapp list --query "[?name=='MagicGlass-Prod'].resourceGroup" -o tsv)
+ 
+      - name: Remove Oryx manifest so Azure runs from wwwroot directly
+        run: |
+          az webapp ssh --name MagicGlass-Prod --resource-group assist-vision \
+            --command "rm -f /home/site/wwwroot/oryx-manifest.toml /home/site/wwwroot/output.tar.zst /home/site/wwwroot/output.tar" || true
+ 
+      - name: Download model file to server
+        run: |
+          az webapp ssh --name MagicGlass-Prod --resource-group assist-vision \
+            --command "curl -L -o /home/site/wwwroot/assistvision_model.keras 'https://github.com/MayMon-T3807/Assist_Vision_Magic_Glass/raw/main/assistvision_model.keras'" || true
+ 
+      - name: Set app settings
+        run: |
+          az webapp config appsettings set \
+            --name MagicGlass-Prod \
+            --resource-group assist-vision \
+            --settings WEBSITE_RUN_FROM_PACKAGE=0 SCM_DO_BUILD_DURING_DEPLOYMENT=true
+ 
+      - name: Set startup command
+        run: |
+          az webapp config set \
+            --name MagicGlass-Prod \
+            --resource-group assist-vision \
+            --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 app:app"
+ 
+      - name: Start app after deploy
+        if: always()
+        run: az webapp start --name MagicGlass-Prod --resource-group assist-vision
