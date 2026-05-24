@@ -5,7 +5,9 @@ from flask import Flask, request, render_template, jsonify
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-UPLOAD_FOLDER = os.path.join('static', 'uploads')
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'bmp'}
 
@@ -16,9 +18,9 @@ def get_model():
     global MODEL, CLASS_NAMES
     if MODEL is None:
         from tensorflow.keras.models import load_model
-        MODEL = load_model('assistvision_model.keras')
+        MODEL = load_model(os.path.join(BASE_DIR, 'assistvision_model.keras'))
     if CLASS_NAMES is None:
-        with open('class_names.json', 'r') as f:
+        with open(os.path.join(BASE_DIR, 'class_names.json'), 'r') as f:
             CLASS_NAMES = json.load(f)
     return MODEL, CLASS_NAMES
 
