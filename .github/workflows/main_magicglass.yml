@@ -1,77 +1,68 @@
 name: Build and deploy Python app to Azure Web App - MagicGlass
-
+ 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-
+ 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
+ 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
+ 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+ 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
+ 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Create clean deployment package
+ 
+      - name: Create deployment package
         run: |
-          mkdir -p artifact
-          zip -r artifact/release.zip . \
-            -x "*.git*" \
-            -x "__pycache__/*" \
-            -x "*.pyc" \
-            -x "release.zip" \
-            -x ".github/*"
-
-          echo "Deployment package created"
-
+          zip -r release.zip . -x "*.git*" -x "__pycache__/*" -x "*.pyc" -x "release.zip"
+          echo "Package created successfully"
+ 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: artifact/release.zip
+          path: release.zip
           retention-days: 1
-
+ 
   deploy:
     runs-on: ubuntu-latest
     needs: build
     permissions:
       id-token: write
       contents: read
-
+ 
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: python-app
-          path: artifact
-
+ 
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_8BE82E4C63B94566B744FAA35ED89A4B }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5626732180BB449D9FDACB6B49B711B5 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B61000D65E6F4F7BB476597A6375BE49 }}
-
+ 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'MagicGlass-Prod'
           slot-name: 'Production'
-          package: artifact/release.zip
+          package: release.zip
