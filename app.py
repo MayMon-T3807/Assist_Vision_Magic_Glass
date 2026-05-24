@@ -4,63 +4,69 @@ import numpy as np
 from flask import Flask, request, render_template, jsonify
 from werkzeug.utils import secure_filename
 from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.image import load_img, img_to_array
 
 app = Flask(__name__)
 
-# ----------------------------
-# Paths (Azure-safe)
-# ----------------------------
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-MODEL_PATH = "/home/site/wwwroot/assistvision_model.keras"
-CLASS_PATH = os.path.join(BASE_DIR, "class_names.json")
+# fallback paths (VERY IMPORTANT for Azure)
+MODEL_PATHS = [
+    os.path.join(BASE_DIR, "assistvision_model.keras"),
+    "/home/site/wwwroot/assistvision_model.keras",
+    "/tmp/assistvision_model.keras"
+]
+
+CLASS_PATHS = [
+    os.path.join(BASE_DIR, "class_names.json"),
+    "/home/site/wwwroot/class_names.json",
+    "/tmp/class_names.json"
+]
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "bmp"}
 
-# ----------------------------
-# Globals (cached model)
-# ----------------------------
 MODEL = None
 CLASS_NAMES = None
 
 
-# ----------------------------
-# Load model + labels (cached)
-# ----------------------------
+# -----------------------------
+# LOAD MODEL + CLASSES
+# -----------------------------
 def get_model():
     global MODEL, CLASS_NAMES
 
-    # Load model once
+    # load model once
     if MODEL is None:
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(f"Model not found at: {MODEL_PATH}")
-        MODEL = load_model(MODEL_PATH)
+        model_path = next((p for p in MODEL_PATHS if os.path.exists(p)), None)
+        if model_path is None:
+            raise FileNotFoundError(f"Model not found in any path: {MODEL_PATHS}")
 
-    # Load class names once
+        MODEL = load_model(model_path)
+
+    # load class names once
     if CLASS_NAMES is None:
-        if not os.path.exists(CLASS_PATH):
-            raise FileNotFoundError(f"Class names not found at: {CLASS_PATH}")
-        with open(CLASS_PATH, "r") as f:
+        class_path = next((p for p in CLASS_PATHS if os.path.exists(p)), None)
+        if class_path is None:
+            raise FileNotFoundError(f"class_names.json not found in: {CLASS_PATHS}")
+
+        with open(class_path, "r") as f:
             CLASS_NAMES = json.load(f)
 
     return MODEL, CLASS_NAMES
 
 
-# ----------------------------
-# Helpers
-# ----------------------------
+# -----------------------------
+# HELPERS
+# -----------------------------
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# ----------------------------
-# Prediction logic
-# ----------------------------
 def predict_image(img_path):
+    from tensorflow.keras.preprocessing.image import load_img, img_to_array
+
     model, class_names = get_model()
 
     img = load_img(img_path, target_size=(224, 224))
@@ -80,9 +86,9 @@ def predict_image(img_path):
     ]
 
 
-# ----------------------------
-# Routes
-# ----------------------------
+# -----------------------------
+# ROUTES
+# -----------------------------
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"}), 200
@@ -107,25 +113,15 @@ def predict():
 
     filename = secure_filename(file.filename)
     save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
     file.save(save_path)
 
-    results = predict_image(save_path)
-
-    return jsonify(
-        {
-            "success": True,
-            "img_url": f"/static/uploads/{filename}",
-            "results": results,
-        }
-    )
+    return jsonify({
+        "success": True,
+        "img_url": f"/static/uploads/{filename}",
+        "results": predict_image(save_path)
+    })
 
 
-# ----------------------------
-# Run app (local only)
-# ----------------------------
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8000)),
-        debug=False,
-    )
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), debug=False)
